@@ -15,7 +15,7 @@ SLACK_HEADERS = {"Authorization": f"Bearer {SLACK_TOKEN}"}
 NAS_URL = os.environ["NAS_URL"]
 NAS_ID = os.environ["NAS_ID"]
 NAS_PW = os.environ["NAS_PW"]
-NAS_UPLOAD_PATH = os.environ["NAS_UPLOAD_PATH"]  # /WatsonX/삼성중공업/Slack
+NAS_UPLOAD_PATH = os.environ["NAS_UPLOAD_PATH"]
 
 LOCAL_TEMP_DIR = "./tmp_slack_files"
 STATE_FILE = "./last_successful_ts.txt"
@@ -118,7 +118,7 @@ def get_channel_files(channel_id, oldest_ts=0):
         if not data.get("ok"):
             raise Exception(f"Slack API Error: {data.get('error')}")
         
-        # 🔍 [디버깅 코드 추가] API가 실제로 메시지를 몇 개나 가져왔는지 출력해봅니다.
+        # 🔍 [디버깅 코드 추가] API가 실제로 메시지를 몇 개나 가져왔는지 출력
         print(f"   -> [디버그] 가져온 순수 메시지 개수: {len(data.get('messages', []))}")
         
         for msg in data.get("messages", []):
@@ -197,7 +197,7 @@ def nas_logout(sid):
 
 def upload_to_nas(local_path, filename, sid, channel_name):
     """로컬 임시 파일을 NAS 채널별 폴더에 업로드"""
-    channel_path = f"{NAS_UPLOAD_PATH}/{channel_name}"  # 예: /WatsonX/삼성중공업/Slack/random
+    channel_path = f"{NAS_UPLOAD_PATH}/{channel_name}"  # 예: /Slack/daily-meeting
 
     with open(local_path, "rb") as f:
         resp = requests.post(
