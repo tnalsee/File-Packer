@@ -8,7 +8,7 @@ from datetime import datetime
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 load_dotenv()
 
-SLACK_TOKEN = os.environ["WEEKLY_BACKUP_BOT_TOKEN"]
+SLACK_TOKEN = os.environ["FILE_PACKER_TOKEN"]
 ALERT_CHANNEL_ID = os.environ["ALERT_CHANNEL_ID"]
 SLACK_HEADERS = {"Authorization": f"Bearer {SLACK_TOKEN}"}
 
