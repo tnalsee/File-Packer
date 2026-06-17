@@ -17,8 +17,10 @@ NAS_ID = os.environ["NAS_ID"]
 NAS_PW = os.environ["NAS_PW"]
 NAS_UPLOAD_PATH = os.environ["NAS_UPLOAD_PATH"]
 
-LOCAL_TEMP_DIR = "./tmp_slack_files"
-STATE_FILE = "./last_successful_ts.txt"
+# 🔁 수정
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOCAL_TEMP_DIR = os.path.join(BASE_DIR, "tmp_slack_files")
+STATE_FILE = os.path.join(BASE_DIR, "last_successful_ts.txt")
 
 
 # ── Slack 알림 ───────────────────────────────────────────
