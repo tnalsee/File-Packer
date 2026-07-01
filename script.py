@@ -20,14 +20,11 @@ NAS_PW = os.environ["NAS_PW"]
 NAS_UPLOAD_PATH = os.environ["NAS_UPLOAD_PATH"]
 
 # 🔁 수정
-LOCAL_TEMP_DIR = "./tmp_slack_files"
-STATE_FILE = "./last_successful_ts.txt"
-# BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# LOCAL_TEMP_DIR = os.path.join(BASE_DIR, "tmp_slack_files")
-# STATE_FILE = os.path.join(BASE_DIR, "last_successful_ts.txt")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOCAL_TEMP_DIR = os.path.join(BASE_DIR, "tmp_slack_files")
+STATE_FILE = os.path.join(BASE_DIR, "last_successful_ts.txt")
 
 
-# ── Slack 알림 ───────────────────────────────────────────
 def send_alert(message):
     try:
         resp = requests.post(
@@ -41,17 +38,19 @@ def send_alert(message):
         print(f"알림 전송 중 예외 발생: {e}")
 
 
-# ── 상태 관리 ─────────────────────────────────────────────
-# 🌟 첫 실행 시 제한 없이 모든 파일을 가져오기 위해 기본값을 0으로 설정합니다.
-DEFAULT_OLDEST_TS = 0
 
+DEFAULT_OLDEST_TS = 0
 #DEFAULT_OLDEST_TS = time.time() - (7 * 86400)  # 기본값: 7일 전
 
 def get_state() -> dict:
-    """
-    JSON 상태 파일을 읽어 채널별 마지막 성공 타임스탬프를 반환.
-    포맷: { "channel_name": float_timestamp, ... }
-    """
+    # # 💡 [임시 조치] 파일 오류를 우회하기 위해 6/18 성공 기록을 메모리에 강제로 주입합니다.
+    # print("[디버그] 6/18 백업 기록을 성공적으로 로드했습니다.")
+    # return {
+    #     "C0B3CU08JDU": 1781763810.089997,
+    #     "C0B3GRB0H7T": 1781763810.089997,
+    #     "C0B5N9D9H63": 1781763810.089997,
+    #     "C0BA7J11XS8": 1781763810.089997
+    # }
     if os.path.exists(STATE_FILE):
         try:
             with open(STATE_FILE, "r", encoding="utf-8") as f:
@@ -81,13 +80,8 @@ def get_state() -> dict:
             
     return {}
 
-# save_state 호출 시 채널 고유 ID 기반으로 저장 (채널이름 변경상황 대비)
+
 def save_state(state: dict, channel_names_map: dict):
-    """
-    채널별로 타임스탬프를 json으로 저장. 가독성을 위해 _readable 키도 함께 기록.
-    state 포맷: { "channel_id": float_timestamp } 
-    channel_names_map 포맷: { "channel_id": "channel_name" }
-    """
     state_with_readable = {}
     for cid, ts in state.items():
         cname = channel_names_map.get(cid, "unknown")
@@ -101,18 +95,14 @@ def save_state(state: dict, channel_names_map: dict):
 
 
 def get_channel_oldest_ts(state: dict, channel_id: str) -> float:
-    """채널 ID로 마지막 성공 timestamp 조회. 없으면 기본값(7일 전) 반환."""
     return state.get(channel_id, DEFAULT_OLDEST_TS)
 
 
-# ── Slack 채널 목록 조회 ──────────────────────────────────
 def get_all_channels():
-    # 워크스페이스에서 봇이 참여하고 있는 채널 목록만 조회 (공개/비공개 모두 포함)
     channels = []
     cursor = None
 
     while True:
-        # types에 private_channel을 추가합니다.
         params = {
             "limit": 200, 
             "exclude_archived": "true",
@@ -131,7 +121,6 @@ def get_all_channels():
         if not data.get("ok"):
             raise Exception(f"채널 목록 조회 실패: {data.get('error')}")
 
-        # 봇이 멤버로 들어가 있는 채널만 결과에 담습니다.
         for channel in data.get("channels", []):
             if channel.get("is_member", False):
                 channels.append(channel)
@@ -144,7 +133,6 @@ def get_all_channels():
     return channels
 
 
-# ── Slack 파일 추출 (채널에서 파일 읽고, temp 폴더에 임시 저장) ────────────────────
 def get_channel_files(channel_id, oldest_ts=0):
     files_list = []
     cursor = None
@@ -164,7 +152,6 @@ def get_channel_files(channel_id, oldest_ts=0):
         if not data.get("ok"):
             raise Exception(f"Slack API Error: {data.get('error')}")
         
-        # 🔍 [디버깅 코드 추가] API가 실제로 메시지를 몇 개나 가져왔는지 출력
         print(f"   -> [디버그] 가져온 순수 메시지 개수: {len(data.get('messages', []))}")
         
         for msg in data.get("messages", []):
@@ -186,29 +173,7 @@ def download_file_to_temp(file_info, temp_dir):
 
     file_id = file_info.get("id", "unknown")
     filename = file_info.get('name', file_id)
-    
-    """
-    # ── 🌟 파일명 안전화 로직 추가 ──────────────────────────────────────
-    raw_filename = file_info.get('name', file_id)
-    
-    # 1. 파일명에서 확장자와 본문 이름을 분리합니다.
-    name_part, ext_part = os.path.splitext(raw_filename)
-    
-    # 2. 알파벳, 한글, 숫자, 하이픈(-), 언더바(_)를 제외한 모든 특수문자와 공백을 언더바(_)로 치환합니다.
-    #    (경로 구분자인 / 나 \ 도 여기서 모두 제거됩니다.)
-    clean_name = re.sub(r'[^a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣\-_]', '_', name_part)
-    
-    # 3. 확장자도 혹시 모를 특수문자를 제거합니다 (.txt -> .txt)
-    clean_ext = re.sub(r'[^a-zA-Z0-9\.]', '', ext_part)
-    
-    # 4. 최종 안전한 파일명 조립
-    filename = f"{clean_name}{clean_ext}"
-    
-    # 만약 정규식 처리로 이름이 완전히 비어버린 경우를 대비한 방어 코드
-    if not clean_name or filename.startswith('.'):
-        filename = f"file_{file_id}{clean_ext if clean_ext else '.bin'}"
-    # ──────────────────────────────────────────────────────────────────
-    """
+
     
     save_path = os.path.join(temp_dir, filename)
 
@@ -227,7 +192,6 @@ def download_file_to_temp(file_info, temp_dir):
     return save_path, filename
 
 
-# ── Synology NAS 로그인/로그아웃 ───────────────────────────────────
 def nas_login():
     resp = requests.get(
         f"{NAS_URL}/webapi/entry.cgi",
@@ -265,7 +229,6 @@ def nas_logout(sid):
     )
 
 
-# ── Synology NAS 업로드 ───────────────────────────────────
 def upload_to_nas(local_path, filename, sid, channel_name):
     """로컬 임시 파일을 NAS 채널별 폴더에 업로드"""
     channel_path = f"{NAS_UPLOAD_PATH}/{channel_name}"  # 예: /Slack/daily-meeting
@@ -299,9 +262,8 @@ if __name__ == "__main__":
     # 1. 상태 및 맵 정보 초기화
     state = get_state()
     channel_names_map = {}
-    current_run_state = state.copy()  # 성공한 채널만 부분 갱신하기 위한 복사본
+    current_run_state = state.copy()
     
-    # 🌟 스크립트가 시작된 시점을 기록 (이 시점 이후의 파일은 다음 실행 때 트리거됨)
     current_run_ts = time.time()
     failed_files = []
 
@@ -309,7 +271,6 @@ if __name__ == "__main__":
         channels = get_all_channels()
         print(f"발견된 채널 수: {len(channels)}")
 
-        # 채널 ID -> 채널 이름 매핑 테이블 구축
         for ch in channels:
             channel_names_map[ch["id"]] = ch["name"]
 
@@ -364,7 +325,7 @@ if __name__ == "__main__":
             nas_logout(sid)
             print("NAS 로그아웃 완료")
 
-        # 4. 상태 저장 및 알림 처리 (일부 성공한 채널이라도 기록을 남기기 위해 무조건 저장)
+        # 4. 상태 저장 및 알림 처리
         save_state(current_run_state, channel_names_map)
 
         if failed_files:
